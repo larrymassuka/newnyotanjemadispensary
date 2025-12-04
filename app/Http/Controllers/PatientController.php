@@ -17,6 +17,8 @@ use App\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator; // ADD THIS LINE
+use Illuminate\Support\Facades\Schema;
 use stdClass;
 
 class PatientController extends Controller
@@ -236,7 +238,7 @@ class PatientController extends Controller
 
    public function checkPatient(Request $request)
 {
-    // If no appointment number provided but patient ID exists, create a temporary session
+    // If no appointment number provided but patient ID exists
     if (empty($request->appNum) && !empty($request->pid)) {
         $patient = Patients::find($request->pid);
         
@@ -246,50 +248,89 @@ class PatientController extends Controller
         
         // Get or create a temporary appointment
         $appointment = Appointment::where('patient_id', $request->pid)
+            ->where('completed', 'NO')
             ->orderBy('created_at', 'desc')
             ->first();
             
         if (!$appointment) {
-            // Create a temporary appointment if none exists
-            $appointment = new Appointment;
-            $appointment->number = 'TEMP-' . date('His');
-            $appointment->patient_id = $request->pid;
-            $appointment->completed = 'NO';
-            $appointment->admit = 'NO';
-            $appointment->save();
+            // Check if there's any appointment for this patient
+            $appointment = Appointment::where('patient_id', $request->pid)
+                ->orderBy('created_at', 'desc')
+                ->first();
+                
+            if (!$appointment) {
+                // Create a new appointment
+                $appointment = new Appointment;
+                $todayCount = Appointment::whereDate('created_at', date("Y-m-d"))->count() + 1;
+                $appointment->number = $todayCount;
+                $appointment->patient_id = $request->pid;
+                $appointment->completed = 'NO';
+                $appointment->admit = 'NO';
+                $appointment->save();
+            }
         }
 
         return $this->loadCheckPatientView($appointment, $patient);
     }
     
-    // Original logic for when appointment number is provided
-    $appointment = Appointment::where('number', $request->appNum)
-        ->where('patient_id', $request->pid)
-        ->orderBy('created_at', 'desc')
-        ->first();
-
-    if (!$appointment) {
-        // Try to find any appointment for this patient
-        $appointment = Appointment::where('patient_id', $request->pid)
+    // If appointment number is provided
+    if (!empty($request->appNum)) {
+        // First try to find by appointment number
+        $appointment = Appointment::where('number', $request->appNum)
             ->orderBy('created_at', 'desc')
             ->first();
             
-        if (!$appointment) {
-            return redirect()->route('check_patient_view')->with('fail', "No appointment found for this patient.");
+        if ($appointment) {
+            $patient = Patients::find($appointment->patient_id);
+            
+            if (!$patient) {
+                return redirect()->route('check_patient_view')->with('fail', "Patient not found for this appointment.");
+            }
+            
+            if ($appointment->completed == "YES") {
+                return redirect()->route('check_patient_view')->with('fail', "This Appointment Has Already Been Channeled.");
+            }
+            
+            return $this->loadCheckPatientView($appointment, $patient);
+        } else {
+            // If no appointment found, try to find by patient ID
+            $patient = Patients::find($request->appNum);
+            
+            if ($patient) {
+                // Get or create appointment for this patient
+                $appointment = Appointment::where('patient_id', $patient->id)
+                    ->where('completed', 'NO')
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                    
+                if (!$appointment) {
+                    $appointment = Appointment::where('patient_id', $patient->id)
+                        ->orderBy('created_at', 'desc')
+                        ->first();
+                        
+                    if (!$appointment) {
+                        // Create new appointment
+                        $todayCount = Appointment::whereDate('created_at', date("Y-m-d"))->count() + 1;
+                        $appointment = new Appointment;
+                        $appointment->number = $todayCount;
+                        $appointment->patient_id = $patient->id;
+                        $appointment->completed = 'NO';
+                        $appointment->admit = 'NO';
+                        $appointment->save();
+                    }
+                }
+                
+                if ($appointment->completed == "YES") {
+                    return redirect()->route('check_patient_view')->with('fail', "Patient's appointment has already been channeled.");
+                }
+                
+                return $this->loadCheckPatientView($appointment, $patient);
+            }
         }
     }
-
-    if ($appointment->completed == "YES") {
-        return redirect()->route('check_patient_view')->with('fail', "This Appointment Has Already Been Channeled.");
-    }
-
-    $patient = Patients::find($appointment->patient_id);
-
-    if (!$patient) {
-        return redirect()->route('check_patient_view')->with('fail', "Patient not found.");
-    }
-
-    return $this->loadCheckPatientView($appointment, $patient);
+    
+    // If nothing found
+    return redirect()->route('check_patient_view')->with('fail', "Please enter a valid appointment number or patient ID.");
 }
 
 /**
@@ -489,25 +530,55 @@ private function loadCheckPatientView($appointment, $patient)
         return view('patient.patient_reg_card', $data);
     }
 
-    public function register_in_patient_view()
-    {
-        $user = Auth::user();
-        $data = DB::table('wards')
-                    ->select('*')
-                    ->join('users', 'wards.doctor_id', '=', 'users.id')
-                    ->get();
-        // dd($data);
-        return view('patient.register_in_patient_view', ['title' => "Register Inpatient",'data'=>$data]);
-    }
+   public function register_in_patient_view()
+{
+    // Your existing query for displaying ward information with doctor
+    $data = DB::table('wards')
+                ->select('*')
+                ->join('users', 'wards.doctor_id', '=', 'users.id')
+                ->get();
+    
+    // Also get wards for the dropdown (simple list)
+    $wards = Ward::all();
+    
+    return view('patient.register_in_patient_view', [
+        'title' => "Register Inpatient",
+        'data' => $data,     // For displaying ward info with doctors
+        'wards' => $wards,   // For the dropdown selection
+    ]);
+}
 
 public function regInPatientValid(Request $request)
 {
     $pNum = $request->pNum;
     
-    // Try to find patient by ID first
+    // Check if patient exists
     $patient = Patients::find($pNum);
     
+    if (!$patient) {
+        // Try to find by shorter appointment number
+        if (strlen((string) $pNum) < 5) {
+            $appointment = Appointment::where('number', $pNum)->first();
+            if ($appointment) {
+                $patient = $appointment->patient;
+            }
+        }
+    }
+    
     if ($patient) {
+        // Check if patient already has ANY inpatient record
+        // Your table doesn't have a discharged column, so we just check if record exists
+        $existingInpatient = Inpatient::where('patient_id', $patient->id)->first();
+        
+        if ($existingInpatient) {
+            return response()->json([
+                'exist' => false,
+                'message' => 'Patient already has an inpatient record!',
+                'already_admitted' => true,
+                'inpatient_no' => 'Record #' . $existingInpatient->id
+            ]);
+        }
+        
         return response()->json([
             'exist' => true,
             'name' => $patient->name,
@@ -516,73 +587,100 @@ public function regInPatientValid(Request $request)
             'occupation' => $patient->occupation,
             'telephone' => $patient->telephone,
             'nic' => $patient->nic,
-            'age' => $patient->getAge(), // Using model method
+            'age' => $patient->getAge(),
             'id' => $patient->id,
+            'already_admitted' => false
         ]);
-    }
-    
-    // If not found, try appointment number (for short numbers)
-    if (strlen((string) $pNum) < 5) {
-        $appointment = Appointment::where('number', $pNum)->first();
-        if ($appointment) {
-            $patient = $appointment->patient;
-            if ($patient) {
-                return response()->json([
-                    'exist' => true,
-                    'name' => $patient->name,
-                    'sex' => $patient->sex,
-                    'address' => $patient->address,
-                    'occupation' => $patient->occupation,
-                    'telephone' => $patient->telephone,
-                    'nic' => $patient->nic,
-                    'age' => $patient->getAge(),
-                    'id' => $patient->id,
-                ]);
-            }
-        }
     }
     
     return response()->json([
         'exist' => false,
+        'message' => 'Patient not found. Please check the registration number.',
+        'already_admitted' => false
     ]);
 }
 
-    public function store_inpatient(Request $request)
-    {
-        $pid = $request->reg_pid;
-        $Ptable = Patients::find($pid);
-        $INPtable = new inpatient;
 
-        $Ptable->civil_status = $request->reg_ipcondition;
-        $Ptable->birth_place = $request->reg_ipbirthplace;
-        $Ptable->nationality = $request->reg_ipnation;
-        $Ptable->religion = $request->reg_ipreligion;
-        $Ptable->income = $request->reg_inpincome;
-        $Ptable->guardian = $request->reg_ipguardname;
-        $Ptable->guardian_address = $request->reg_ipguardaddress;
-
-        $INPtable->patient_id = $request->reg_pid;
-        $INPtable->ward_id = $request->reg_ipwardno;
-        $INPtable->patient_inventory = $request->reg_ipinventory;
-    
-        $INPtable->house_doctor = $request->reg_iphousedoc;
-        $INPtable->approved_doctor = $request->reg_ipapprovedoc;
-        $INPtable->disease = $request->reg_admitofficer1;
-        $INPtable->duration = $request->reg_admitofficer2;
-        $INPtable->condition = $request->reg_admitofficer3;
-        $INPtable->certified_officer = $request->reg_admitofficer4;
-
-        $Ptable->save();
-        $INPtable->save();
-
-        // decrement bed count by 1
-        $getFB = Ward::where('ward_no', $request->reg_ipwardno)->first();
-        $newFB = $getFB->free_beds-=1;
-        Ward::where('ward_no', $request->reg_ipwardno)->update(['free_beds' => $newFB]);
-
-      
-        return redirect()->back()->with('regpsuccess', "Inpatient Successfully Registered");
+  public function store_inpatient(Request $request)
+{
+    try {
+        // Simple validation - using your actual table columns
+        $required = ['patient_id', 'ward_id', 'disease', 'duration', 'condition', 'certified_officer'];
+        foreach ($required as $field) {
+            if (empty($request->$field)) {
+                return redirect()->back()
+                    ->with('regpfail', ucfirst(str_replace('_', ' ', $field)) . ' is required!')
+                    ->withInput();
+            }
+        }
+        
+        // Check if patient exists
+        $patient = Patients::find($request->patient_id);
+        if (!$patient) {
+            return redirect()->back()
+                ->with('regpfail', 'Patient not found!')
+                ->withInput();
+        }
+        
+        // Check if ward exists
+        $ward = Ward::find($request->ward_id);
+        if (!$ward) {
+            return redirect()->back()
+                ->with('regpfail', 'Ward not found!')
+                ->withInput();
+        }
+        
+        // Check if patient already has an inpatient record
+        $existingInpatient = Inpatient::where('patient_id', $request->patient_id)->first();
+        if ($existingInpatient) {
+            return redirect()->back()
+                ->with('regpfail', 'Patient already has an inpatient record! Cannot admit again.')
+                ->withInput();
+        }
+        
+        // Check bed availability
+        $availableBeds = $ward->free_beds ?? $ward->available_beds ?? 0;
+        if ($availableBeds <= 0) {
+            return redirect()->back()
+                ->with('regpfail', 'No beds available in selected ward!')
+                ->withInput();
+        }
+        
+        // Create inpatient record - ONLY with columns that exist in your table
+        $inpatient = new Inpatient;
+        $inpatient->patient_id = $request->patient_id;
+        $inpatient->ward_id = $request->ward_id;
+        $inpatient->disease = $request->disease;
+        $inpatient->duration = $request->duration;
+        $inpatient->condition = $request->condition;
+        $inpatient->certified_officer = $request->certified_officer;
+        // That's it! No discharged, no inpatient_no, no admission_date
+        
+        $inpatient->save();
+        
+        // Update bed count
+        if (isset($ward->available_beds)) {
+            $ward->available_beds -= 1;
+        } elseif (isset($ward->free_beds)) {
+            $ward->free_beds -= 1;
+        }
+        $ward->save();
+        
+        // Get the generated inpatient ID
+        $inpatientId = $inpatient->id;
+        
+        return redirect()->route('register_in_patient_view')
+            ->with('regpsuccess', "Patient {$patient->name} admitted successfully! Inpatient Record ID: {$inpatientId}");
+            
+    } catch (\Exception $e) {
+        \Log::error('Inpatient registration error: ' . $e->getMessage());
+        
+        return redirect()->back()
+            ->with('regpfail', 'Error: ' . $e->getMessage())
+            ->withInput();
     }
+}
+
 
     public function get_ward_list()
     {
@@ -604,19 +702,19 @@ public function regInPatientValid(Request $request)
 {
     $pNum = $request->pNum;
     
-    // Find inpatient record - removed discharged='NO' check
+    // Find inpatient record - since there's no discharged column, just find any inpatient record
     $inpatient = DB::table('patients')
         ->join('inpatients', 'patients.id', '=', 'inpatients.patient_id')
         ->select(
+            'inpatients.id as inpatient_id',
             'inpatients.patient_id as id', 
             'patients.name as name', 
             'patients.address as address', 
             'patients.telephone as tel', 
-            'inpatients.discharged as dis',
             'inpatients.ward_id',
             'inpatients.created_at as admission_date'
         )
-        ->where('inpatients.patient_id', $pNum)  // Only check if patient exists as inpatient
+        ->where('inpatients.patient_id', $pNum)
         ->first();
 
     if ($inpatient) {
@@ -628,10 +726,8 @@ public function regInPatientValid(Request $request)
             'id' => $inpatient->id,
             'ward_id' => $inpatient->ward_id,
             'admission_date' => $inpatient->admission_date,
-            'discharge_status' => $inpatient->dis,  // Include status for info
-            'message' => $inpatient->dis === 'YES' ? 
-                'Patient found (already discharged)' : 
-                'Patient found and ready for discharge'
+            'inpatient_id' => $inpatient->inpatient_id,
+            'message' => 'Patient found. Ready for discharge.'
         ]);
     } else {
         // Check if patient exists at all
@@ -652,32 +748,71 @@ public function regInPatientValid(Request $request)
         }
     }
 }
-    public function store_disinpatient(Request $request)
-    {
-        // try{
+
+
+   public function store_disinpatient(Request $request)
+{
+    try {
         $pid = $request->reg_pid;
+        
+        // Find the inpatient record
         $INPtableUpdate = Inpatient::where('patient_id', $pid)->first();
-
+        
+        if (!$INPtableUpdate) {
+            return redirect()->back()->with('regpfail', "Inpatient record not found!");
+        }
+        
+        // Get patient data
+        $patient = Patients::find($pid);
+        if (!$patient) {
+            return redirect()->back()->with('regpfail', "Patient not found!");
+        }
+        
+        // Update the inpatient record with discharge information
         $timestamp = now();
-        $INPtableUpdate->discharged = 'YES';
-        $INPtableUpdate->discharged_date = $timestamp;
-        $INPtableUpdate->description = $request->reg_medicalofficer1;
-        $INPtableUpdate->discharged_officer = $request->reg_medicalofficer2;
-
+        
+        // Check if columns exist before updating
+        if (Schema::hasColumn('inpatients', 'discharged')) {
+            $INPtableUpdate->discharged = 'YES';
+        }
+        
+        if (Schema::hasColumn('inpatients', 'discharged_date')) {
+            $INPtableUpdate->discharged_date = $timestamp;
+        }
+        
+        if (Schema::hasColumn('inpatients', 'description')) {
+            $INPtableUpdate->description = $request->reg_medicalofficer1;
+        }
+        
+        if (Schema::hasColumn('inpatients', 'discharged_officer')) {
+            $INPtableUpdate->discharged_officer = $request->reg_medicalofficer2;
+        }
+        
         $INPtableUpdate->save();
-
-        // increment bed count by 1
-        $wardNo = $INPtableUpdate->ward_id;
-        $getFB = Ward::where('ward_no', $wardNo)->first();
-        $newFB = $getFB->free_beds+=1;
-        Ward::where('ward_no', $wardNo)->update(['free_beds' => $newFB]);
-
-        return view('patient.discharge_recipt',compact('INPtableUpdate'))->with('regpsuccess', "Inpatient Successfully Discharged");;
-        // }
-        // catch(\Throwable $th){
-        //     return redirect()->back()->with('error',"Unkown Error Occured");
-        // }
+        
+        // Increment bed count by 1
+        $ward = Ward::find($INPtableUpdate->ward_id);
+        if ($ward) {
+            if (isset($ward->available_beds)) {
+                $ward->available_beds += 1;
+            } elseif (isset($ward->free_beds)) {
+                $ward->free_beds += 1;
+            }
+            $ward->save();
+        }
+        
+        // Pass all necessary data to the view
+        return view('patient.discharge_recipt', [
+            'INPtableUpdate' => $INPtableUpdate,
+            'patient' => $patient,
+            'ward' => $ward
+        ])->with('regpsuccess', "Inpatient Successfully Discharged");
+            
+    } catch (\Throwable $th) {
+        \Log::error('Discharge error: ' . $th->getMessage());
+        return redirect()->back()->with('regpfail', "Unknown Error Occurred: " . $th->getMessage());
     }
+}
 
     public function getPatientData(Request $request)
     {

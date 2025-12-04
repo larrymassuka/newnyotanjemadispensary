@@ -17,7 +17,7 @@
 $name = $user->name;
 $user_type =$user->user_type;
 $image_path =$user->img_path;
-$outlet = 'Rural Ayruvedic Hospital Kesbawa'?>
+$outlet = 'NEW NYOTA NJEMA DISPENSARY'?>
 
 <section class="content">
 

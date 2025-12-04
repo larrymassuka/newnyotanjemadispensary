@@ -441,13 +441,7 @@ $outlet = 'Rural Ayruvedic Hospital Kesbawa'?>
 
                     <strong><i class="fa fa-pencil-alt margin-r-5"></i> Skills</strong>
                     <br>
-                    <span styles="display:inline-block;" class="label label-danger">Communication Skills</span>
-                    <span styles="display:inline-block;" class="label label-success">Emotional Intelligence</span>
-                    <span styles="display:inline-block;" class="label label-info">Problem-Solving Skills</span>
-                    <span styles="display:inline-block;" class="label label-primary">Decision-Making Skills</span>
-                    <br>
                     {{$skills}}
-
                     <hr>
 
                     <strong><i class="fas fa-sticky-note margin-r-5"></i> Notes</strong>

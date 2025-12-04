@@ -87,58 +87,90 @@ class MedicineController extends Controller
         ['title' => "Issue MedicineN"]);
     }
 
-    public function issueMedicineValid(Request $request)
-    {
-        $num = $request->pNum;
-        $numlength = strlen((string) $num);
+   public function issueMedicineValid(Request $request)
+{
+    $num = $request->pNum;
+    
+    // Remove length check - just search for any matching record
+    // First, try to find by appointment number (for today and previous days)
+    $appointment = Appointment::where('number', $num)
+        ->orderBy('created_at', 'DESC')
+        ->first();
+    
+    if ($appointment) {
+        $prescription = Prescription::where('appointment_id', $appointment->id)->first();
         
-        if ($numlength < 7) {  //if appointemnt number have been given
-            $app=Appointment::whereRaw('date(created_at)=CURDATE()')
-                            ->where('number',$num)
-                            ->orderBy('created_at','DESC')
-                            ->first();
-          
-            if ($app) {
-                $rec=Prescription::where('appointment_id',$app->id)->first();
-                return response()->json([
-                    "exist" => true,
-                    "name" => $rec->patient->name,
-                    "appNum" => $app->number,
-                    "pNUM" => $rec->patient_id,
-                    "pres_id"=>$rec->id,
-                ]);
-            } else {
+        if ($prescription) {
+            // Check if medicines are already issued
+            $alreadyIssued = Prescription_Medicine::where('prescription_id', $prescription->id)
+                ->where('issued', 'YES')
+                ->exists();
+            
+            if ($alreadyIssued) {
                 return response()->json([
                     "exist" => false,
+                    "message" => "Medicines for this prescription have already been issued."
                 ]);
             }
-        } 
-        else { //if patient registration number have been given
-            $app=Appointment::whereRaw('date(created_at)=CURDATE()')
-                            ->where('patient_id',$num)
-                            ->orderBy('created_at','DESC')
-                            ->first();
-
-            if ($app) {
-
-                $rec=Prescription::where('appointment_id',$app->id)->first();
-
-                return response()->json([
-                    "exist" => true,
-                    "name" => $rec->patient->name,
-                    "appNum" => $app->number,
-                    "pNUM" => $rec->patient_id,
-                    "pres_id"=>$rec->id,
-                ]);
-            } else {
-                return response()->json([
-                    "exist" => false,
-                ]);
-            }
+            
+            return response()->json([
+                "exist" => true,
+                "name" => $prescription->patient->name,
+                "appNum" => $appointment->number,
+                "pNUM" => $prescription->patient_id,
+                "pres_id" => $prescription->id,
+                "message" => "Prescription found"
+            ]);
         }
-
-        
     }
+    
+    // If not found by appointment number, try by patient ID
+    $patient = Patients::find($num);
+    
+    if ($patient) {
+        // Get the latest prescription for this patient
+        $prescription = Prescription::where('patient_id', $patient->id)
+            ->orderBy('created_at', 'DESC')
+            ->first();
+        
+        if ($prescription) {
+            // Check if medicines are already issued
+            $alreadyIssued = Prescription_Medicine::where('prescription_id', $prescription->id)
+                ->where('issued', 'YES')
+                ->exists();
+            
+            if ($alreadyIssued) {
+                return response()->json([
+                    "exist" => false,
+                    "message" => "Medicines for this prescription have already been issued."
+                ]);
+            }
+            
+            // Get the appointment for this prescription
+            $appointment = $prescription->appointment;
+            
+            return response()->json([
+                "exist" => true,
+                "name" => $patient->name,
+                "appNum" => $appointment ? $appointment->number : 'N/A',
+                "pNUM" => $patient->id,
+                "pres_id" => $prescription->id,
+                "message" => "Prescription found for patient"
+            ]);
+        } else {
+            return response()->json([
+                "exist" => false,
+                "message" => "No prescription found for this patient."
+            ]);
+        }
+    }
+    
+    // If nothing found
+    return response()->json([
+        "exist" => false,
+        "message" => "No appointment or patient found with the provided number."
+    ]);
+}
 
   
 }

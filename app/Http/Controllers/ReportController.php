@@ -35,65 +35,74 @@ class ReportController extends Controller
         return view('reports/mobile_clinic_reports', ['title' => $user->name]);
     }
     public function view_monthly_static_report()
-    {
-        $user = Auth::user();
+{
+    $user = Auth::user();
 
-        $start_date = date('Y/m/00');
-        $end_date = date('Y/m/31');
-        $no_of_employees = DB::table('attendances')
-            ->whereBetween('attendances.start', [$start_date, $end_date])
-            ->count(DB::raw('DISTINCT user_id'));
-        $patient_count = DB::table('appointments')
-            ->count(DB::raw('distinct number'));
-        $avg_patient = ceil($patient_count / 30);
+    // Fixed date format
+    $start_date = date('Y-m-01'); // First day of current month
+    $end_date = date('Y-m-t'); // Last day of current month
+    
+    $no_of_employees = DB::table('attendances')
+        ->whereBetween('attendances.start', [$start_date, $end_date])
+        ->count(DB::raw('DISTINCT user_id'));
+    
+    $patient_count = DB::table('appointments')
+        ->whereBetween('created_at', [$start_date, $end_date])
+        ->count(DB::raw('distinct number'));
+    
+    $avg_patient = $patient_count > 0 ? ceil($patient_count / date('t')) : 0; // Use actual days in month
 
-        $ward_count = DB::table('wards')
-            ->count(DB::raw('distinct ward_no'));
-        $bed_count = DB::table('wards')
-            ->sum('beds');
-        $inpatient_count = DB::table('inpatients')
-            ->whereBetween('created_at', [$start_date, $end_date])
-            ->count(DB::raw('discharged'));
-        $discharged_patinet_count = DB::table('inpatients')
-            ->where('discharged', '=', 'YES')
-            ->whereBetween('created_at', [$start_date, $end_date])
-            ->count(DB::raw('discharged'));
+    $ward_count = DB::table('wards')
+        ->count(DB::raw('distinct ward_no'));
+    
+    $bed_count = DB::table('wards')
+        ->sum('beds');
+    
+    // Fixed: Count all inpatients for the month
+    $inpatient_count = DB::table('inpatients')
+        ->whereBetween('created_at', [$start_date, $end_date])
+        ->count();
+    
+    // Fixed: Set to 0 since discharged column doesn't exist
+    $discharged_patinet_count = 0;
 
-        $admindaycnt = DB::table('attendances')
-            ->join('users', 'users.id', '=', 'attendances.user_id')
-            ->whereBetween('attendances.start', [$start_date, $end_date])
-            ->where('users.user_type', '=', 'admin')
-            ->count(DB::raw('start'));
+    $admindaycnt = DB::table('attendances')
+        ->join('users', 'users.id', '=', 'attendances.user_id')
+        ->whereBetween('attendances.start', [$start_date, $end_date])
+        ->where('users.user_type', '=', 'admin')
+        ->count(DB::raw('start'));
 
-        $doctordaycnt = DB::table('attendances')
-            ->join('users', 'users.id', '=', 'attendances.user_id')
-            ->whereBetween('attendances.start', [$start_date, $end_date])
-            ->where('users.user_type', '=', 'doctor')
-            ->count(DB::raw('start'));
+    $doctordaycnt = DB::table('attendances')
+        ->join('users', 'users.id', '=', 'attendances.user_id')
+        ->whereBetween('attendances.start', [$start_date, $end_date])
+        ->where('users.user_type', '=', 'doctor')
+        ->count(DB::raw('start'));
 
-        $appointmentcnt = DB::table('appointments')
-            ->whereBetween('created_at', [$start_date, $end_date])
-            ->count(DB::raw('id'));
-        $distinctappcnt = DB::table('appointments')
-            ->whereBetween('created_at', [$start_date, $end_date])
-            ->count(DB::raw('distinct patient_id'));
-        $patientsecondarrival = $appointmentcnt - $distinctappcnt;
+    $appointmentcnt = DB::table('appointments')
+        ->whereBetween('created_at', [$start_date, $end_date])
+        ->count(DB::raw('id'));
+    
+    $distinctappcnt = DB::table('appointments')
+        ->whereBetween('created_at', [$start_date, $end_date])
+        ->count(DB::raw('distinct patient_id'));
+    
+    $patientsecondarrival = $appointmentcnt - $distinctappcnt;
 
-        return view('reports/monthly_static_report', [
-            'title' => $user->name,
-            'noemp' => $no_of_employees,
-            'avgpatient' => $avg_patient,
-            'wardcnt' => $ward_count,
-            'bedcnt' => $bed_count,
-            'inpcnt' => $inpatient_count,
-            'dispcnt' => $discharged_patinet_count,
-            'admindaycnt' => $admindaycnt,
-            'doctordaycnt' => $doctordaycnt,
-            'fa' => $distinctappcnt,
-            'sa' => $patientsecondarrival,
-            'total' => $appointmentcnt
-        ]);
-    }
+    return view('reports/monthly_static_report', [
+        'title' => $user->name,
+        'noemp' => $no_of_employees,
+        'avgpatient' => $avg_patient,
+        'wardcnt' => $ward_count,
+        'bedcnt' => $bed_count,
+        'inpcnt' => $inpatient_count,
+        'dispcnt' => $discharged_patinet_count,
+        'admindaycnt' => $admindaycnt,
+        'doctordaycnt' => $doctordaycnt,
+        'fa' => $distinctappcnt,
+        'sa' => $patientsecondarrival,
+        'total' => $appointmentcnt
+    ]);
+}
     public function view_out_patient_report()
     {
         $user = Auth::user();

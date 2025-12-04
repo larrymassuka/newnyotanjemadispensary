@@ -106,16 +106,19 @@
                             </select>
                         </div>
 
-                        <label class="col-sm-1 control-label">{{__('DOB')}}<span style="color:red">*</span></label>
-                        <div class="col-sm-3">
-                            <div class="input-group date">
-                                <div class="input-group-addon">
-                                    <i class="fa fa-calendar"></i>
-                                </div>
-                                <input type="date" required max="2014-12-30" class="form-control pull-right"
-                                    name="reg_pbd" placeholder="Birthday">
-                            </div>
-                        </div>
+                       <div class="form-group">
+   <div class="form-group">
+    <label for="reg_pbd" class="col-sm-2 control-label">{{__('Date of Birth')}}<span style="color:red">*</span></label>
+    <div class="col-sm-2">
+        <input type="date" 
+               required 
+               class="form-control" 
+               name="reg_pbd" 
+               id="reg_pbd"
+               max="{{ date('Y-m-d') }}"
+               placeholder="YYYY-MM-DD">
+    </div>
+</div>
                     </div>
                     <div class="box-footer">
                         <input type="submit" class="btn btn-info pull-right" value="{{__('Register')}}">

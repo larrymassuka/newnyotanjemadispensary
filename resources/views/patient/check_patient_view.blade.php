@@ -61,107 +61,11 @@
                             View Patient History
                         </button>
                     </div>
-                    <div class="col-md-3 mt-2 mb-0 pb-0">
-                        <button data-toggle="modal" data-target="#modal-clinics" class="btn btn-primary">
-                            Assign To Clinic
-                        </button>
-                    </div>
+                    <!-- Removed the Assign To Clinic button -->
                 </div>
             </div>
         </div>
     </div>
-
-    <script>
-        $(document).ready(function () {
-            $("#clinic-form").submit(function(e) {
-            
-            e.preventDefault(); // avoid to execute the actual submit of the form.
-            
-            var form = $(this);
-            var url = form.attr('action');
-        
-            $.ajax({
-                   type: "POST",
-                   url: url,
-                   processData: false,
-                        
-                        cache: false,
-                   headers: {
-                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                   },
-                   data: $('#clinic-form').serialize(), // serializes the form's elements.
-                   success: function(response)
-                   {
-                       if(response.code==200){
-                        $("#clinic").html(response.html_list);
-                        $("#already").html(response.html_already);
-
-                       }
-                       console.log(response); // show response from the php script.
-                   },
-                   error:function(response){
-                       console.log(response);
-                   }
-     });
-
-
-});
-    });
-    </script>
-    <div class="modal fade" id="modal-clinics">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                        <span aria-hidden="true">&times;</span></button>
-                    <h3 class="modal-title">Assign To Clinics</h3>
-                </div>
-                <div id="clinics" class="modal-body">
-                    <h4>This Patient Is Already Assigned To </h4>
-                    <div id="already">
-                        @foreach ($assinged_clinics as $clinic)
-                        <span style="font-size:15px;display:inline-block"
-                            class="label mt-1 mb-1 bg-blue">{{$clinic->name_eng}}</span>
-                        @endforeach
-                    </div>
-                    <div class="mt-3 pt-1">
-
-                        <form action="{{route('addToClinic')}}" method="POST" id="clinic-form">
-                            <input type="hidden" name="pid" value="{{$pid}}">
-                            <h4 for="clinic">Assign To a New Clinic <small>( CTRL+Click To Select Multiple )</small>
-                            </h4>
-                            <select class="form-control" name="clinic[]" multiple id="clinic">
-
-                                @foreach ($clinics as $clinic)
-                                @php
-                                $flag=0;
-                                @endphp
-                                @foreach($assinged_clinics as $key)
-                                @if($clinic->id==$key->id)
-                                @php
-                                $flag=1;
-                                @endphp
-                                @endif
-                                @endforeach
-                                @if ($flag==0)
-                                <option value={{$clinic->id}}>{{$clinic->name_eng}}({{$clinic->name_sin}})</option>
-                                @endif
-                                @endforeach
-                            </select>
-
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="reset" class="btn btn-default pull-left" data-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
-                </div>
-                </form>
-            </div>
-            <!-- /.modal-content -->
-        </div>
-        <!-- /.modal-dialog -->
-    </div>
-    <!-- /.modal -->
 
     <div class="rounded col-md-6">
 
